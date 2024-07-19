@@ -6,29 +6,115 @@ const cacheControl  = require("../../config/cacheControl");
 const reader = new mailgunReader(mailgunConfig);
 
 /**
- * Mail listing api, returns the list of emails
+ * Mail listing API, returns the list of emails
  *
  * @param {*} req
  * @param {*} res
  */
-module.exports = function(req, res){
-	let params = req.query
-	let recipient = params.recipient
+module.exports = function(req, res) {
+    let params = req.query;
 
-	if (recipient == null){
-		res.status(400).send({ error : "No `recepient` param found" });
-	}
+    // recipient may be:
+    // only the username, e.g. "john.doe"
+    // or the full email, e.g. "john.doe@domain.com"
+    let recipient = params.recipient;
 
-	// strip off all @domain if there is any
-	if(recipient.indexOf("@") >= 0){
-		recipient = recipient.substring(0, recipient.indexOf("@"))
-	}
+    // Check if recipient is empty
+    if (!recipient) {
+        return res.status(400).send({ error: "No valid `recipient` param found" });
+    }
 
-	reader.recipientEventList(recipient+"@"+mailgunConfig.emailDomain).then(response => {
-		res.set('cache-control', cacheControl.dynamic)
-		res.status(200).send(response.items)
-	})
-	.catch(e => {
-		res.status(500).send("{error: '"+e+"'}")
-	});
+    // Trim leading and trailing whitespace
+    recipient = recipient.trim();
+
+    // If recipient ends with `"@"+mailgunConfig.emailDomain`, remove it
+    let pos = recipient.indexOf("@" + mailgunConfig.emailDomain);
+    if (pos >= 0) {
+        recipient = recipient.substring(0, pos);
+    }
+
+    // Validate recipient
+    try {
+        recipient = validateUsername(recipient);
+    } catch (e) {
+        return res.status(400).send({ error: "Invalid email" });
+    }
+
+    // Empty check
+    if (!recipient) {
+        return res.status(400).send({ error: "No valid `recipient` param found" });
+    }
+
+    reader.recipientEventList(recipient + "@" + mailgunConfig.emailDomain)
+        .then(response => {
+            res.set('cache-control', cacheControl.dynamic);
+            res.status(200).send(response.items);
+        })
+        .catch(e => {
+            console.error(`Error getting list of messages for "${recipient}":`, e);
+            res.status(500).send({ error: e.toString() });
+        });
+};
+
+/**
+ * Strictly validate username, rejecting any username that does not conform to the standards
+ * @param {*} username username to be validated
+ * @returns {string} Validated username
+ */
+function validateUsername(username) {
+
+    // Step 1: Trim leading and trailing whitespaces
+    username = username.trim();
+
+    // Step 2: Throw error if the sanitized string is empty
+    if (username.length < 3) {
+        throw new Error("Invalid email.");
+    }
+
+    // Step 2: Block the domain itself
+    if(username.toLowerCase() == mailgunConfig.emailDomain) {
+        throw new Error("Invalid email.");
+    }
+
+    // Step 3: Check for disallowed characters
+    // Allowed characters: alphanumeric, dot (.), underscore (_), hyphen (-), plus (+)
+    const disallowedChars = /[^a-zA-Z0-9._+-]/g;
+    if (disallowedChars.test(username)) {
+        throw new Error("Invalid email.");
+    }
+
+    // Step 4: Ensure that the username does not only contains symbols, but at least one alphanumeric character
+    if (!/[a-zA-Z0-9]/.test(username)) {
+        throw new Error("Invalid email.");
+    }
+
+    // Step 5: Reject problematic inputs
+    if (/^[-._]+$/.test(username) || username === '-' || username === '_' || username === '.') {
+        throw new Error("Invalid email: Username cannot consist solely of special characters.");
+    }
+
+    // Step 6: Check for consecutive special characters
+    if (/[._-]{2,}/.test(username)) {
+        throw new Error("Invalid email: Username cannot contain consecutive special characters.");
+    }
+
+    // Step 6: Ensure that the username starts and end with an alphanumeric character instead of a symbol
+    if (/^[._+-]/.test(username) || /[._+-]$/.test(username)) {
+        throw new Error("Invalid email.");
+    }
+
+    // Step 7: Pure numeric usernames are disallowed
+    if ((/^[0-9]*$/.test(username)) == true) {
+        throw new Error("Invalid email.");
+    }
+
+    // Step 8: Ensure that the username starts or end with an alphabetical character
+    // This mitigate numeric iterations, but does permit numericalpha sets
+    if ( /^[0-9][a-zA-Z]/.test(username) || /[a-zA-Z][0-9]$/.test(username) ) {
+        // does nothing
+    } else if (!(/^[a-zA-Z]/.test(username) || /[a-zA-Z]$/.test(username))) {
+        throw new Error("Invalid email.");
+    }
+
+    return username;
 }

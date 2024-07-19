@@ -7,9 +7,9 @@
         <i class="fas fa-exclamation-triangle" style="margin-right:0.5em"></i><a href="https://uilicious.com/blog/psa-inboxkitten-will-be-blocking-no-reply-google/" target="_blank"><b>PSA</b>: Please use inboxkitten, for only testing, or non critical emails. See here for more details.</a>
       </div>
       <pulse-loader v-if="refreshing" class="loading"></pulse-loader>
-      <div class="table-box" v-if="listOfMessages.length > 0">
-        <div :class="rowCls(index)" v-for="(msg, index) in listOfMessages" :key="msg.url"
-             @click="getMessage(msg.storage.url)">
+      <div class="email-list table-box" v-if="listOfMessages.length > 0">
+        <div class="email-list-item" :class="rowCls(index)" v-for="(msg, index) in listOfMessages" :key="msg.url"
+             @click="getMessage(msg)">
 
           <div class="row-info">
             <div class="row-name">{{extractEmail(msg.message.headers.from)}}</div>
@@ -96,14 +96,13 @@ export default {
       this.refreshList()
     },
 
-    getMessage (url) {
-      let [protocol, empty, host, ...uri] = url.split('/')
-      let [region, ...remainingHost] = host.split('.')
-      let mailkey = region + '-' + uri[uri.length - 1]
+    getMessage (msg) {
+      
       this.$router.push({
-        name: 'Detail',
+        name: 'Message',
         params: {
-          key: mailkey
+          region: msg.storage.region,
+          key: msg.storage.key
         }
       })
 
